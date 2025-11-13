@@ -388,6 +388,77 @@ pre {
 #pdfTemp {
   display: none;
 }
+.parcelas-container {
+  margin: 20px 0;
+  padding: 20px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 15px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+  display: none;
+}
+
+.parcelas-container.show {
+  display: block;
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.parcelas-container h3 {
+  color: white;
+  text-align: center;
+  margin: 0 0 15px 0;
+  font-size: 1.3em;
+}
+
+.parcela-item {
+  background: white;
+  padding: 12px 15px;
+  margin: 8px 0;
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: all 0.2s ease;
+}
+
+.parcela-item:hover {
+  transform: translateX(5px);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+}
+
+.parcela-item.destaque {
+  background: #d4fc79;
+  font-weight: 700;
+  border-left: 4px solid #38a169;
+}
+
+.parcela-numero {
+  font-weight: 600;
+  color: #667eea;
+  font-size: 1.1em;
+}
+
+.parcela-valor {
+  font-size: 1.2em;
+  font-weight: 700;
+  color: #2d3748;
+}
+
+.parcela-juros {
+  font-size: 0.85em;
+  color: #e53e3e;
+  font-style: italic;
+}
 
 </style>
 </head>
@@ -446,7 +517,10 @@ LL Metais"></textarea>
   <button class="btn-pdf" onclick="salvarPDF()">📄 PDF Completo</button>
   <button class="btn-pdf" onclick="salvarPDFResumido()">📋 PDF Resumido</button>
   <button class="btn-pdf" onclick="salvarPDFComLinks()">🔗 PDF c/ Links</button>
+<button class="btn-pdf" onclick="salvarPDFContinuo()" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">📜 PDF Contínuo c/ Parcelas</button>
+<button class="btn-pdf" onclick="salvarPDFContinuomobile()" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);">📜 PDF Contínuo Celular</button>
   <button class="btn-clear" onclick="limparCampos()">🗑️ Limpar Tudo</button>
+<button class="btn-copy" onclick="toggleParcelas()" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">💳 Mostrar Parcelas</button>
 
 
 </div>
@@ -793,6 +867,366 @@ function buscarESelecionarMultiplos() {
   alert(mensagem);
 }
 
+// Taxas de parcelamento (aplicadas SOBRE o valor com 5,24% do cartão)
+const taxasParcelas = {
+  1: 0,      // Sem acréscimo adicional (só os 5,24% do cartão)
+  2: 9.64,
+  3: 11.23,
+  4: 11.36,
+  5: 14.31,
+  6: 14.32,
+  7: 16.72,
+  8: 16.73,
+  9: 19.69,
+  10: 20.65,
+  11: 20.66,
+  12: 22.11
+};
+
+let parcelasVisiveis = false;
+
+function toggleParcelas() {
+  const container = document.querySelector('.parcelas-container');
+  const btn = event.target;
+
+  if (!container) {
+    alert("⚠️ Gere o orçamento primeiro!");
+    return;
+  }
+
+  parcelasVisiveis = !parcelasVisiveis;
+
+  if (parcelasVisiveis) {
+    container.classList.add('show');
+    btn.textContent = '💳 Ocultar Parcelas';
+  } else {
+    container.classList.remove('show');
+    btn.textContent = '💳 Mostrar Parcelas';
+  }
+}
+
+function gerarHTMLParcelas(valorFinal) {
+  // Valor com os 5,24% do cartão (base para o parcelamento)
+  const valorCartao = valorFinal * 1.0524;
+
+  let html = `
+    <div class="parcelas-container">
+      <h3>💳 SIMULAÇÃO DE PARCELAMENTO NO CARTÃO</h3>
+  `;
+
+  for (let parcela = 1; parcela <= 12; parcela++) {
+    // Calcula o valor com juros de parcelamento sobre o valor do cartão
+    const taxaDecimal = taxasParcelas[parcela] / 100;
+    const valorComJuros = valorCartao * (1 + taxaDecimal);
+    const valorParcela = valorComJuros / parcela;
+    const valorTotal = valorParcela * parcela;
+
+    const classeDestaque = parcela === 1 ? ' destaque' : '';
+    const textoAcrescimo = parcela === 1 
+      ? '(Sem acréscimo adicional)' 
+      : `<span class="parcela-juros">+${taxasParcelas[parcela]}% = ${valorTotal.toLocaleString('pt-BR', {style:'currency', currency:'BRL'})}</span>`;
+
+    html += `
+      <div class="parcela-item${classeDestaque}">
+        <span class="parcela-numero">${parcela}x</span>
+        <span class="parcela-valor">${valorParcela.toLocaleString('pt-BR', {style:'currency', currency:'BRL'})}</span>
+        <span>${textoAcrescimo}</span>
+      </div>
+    `;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+function salvarPDFContinuo() {
+  const cliente = document.getElementById("cliente").value.trim();
+  const contato = document.getElementById("contato").value.trim();
+  const perc = parseFloat(document.getElementById("descontoPerc").value) || 0;
+  const val = parseFloat(document.getElementById("descontoVal").value) || 0;
+  const msgAdd = document.getElementById("mensagem").value.trim();
+  const qtdSamples = selectedSamples.size;
+
+  if (qtdSamples === 0) {
+    alert("⚠️ Selecione ao menos um sample!");
+    return;
+  }
+
+  let total = 0;
+  let samplesHTML = '';
+
+  selectedSamples.forEach(i => {
+    const s = samplesData[i];
+    samplesHTML += `
+      <div style="padding:8px 10px; margin:5px 0; background:#f5f5f5; border-left:4px solid #667eea;">
+        <strong>• ${s.nome}</strong> <span style="float:right;">R$ ${s.valor.toFixed(2)}</span>
+      </div>`;
+    total += s.valor;
+  });
+
+  const descPerc = total * (perc / 100);
+  const descTotal = descPerc + val;
+  const final = total - descTotal;
+
+  let descontoHTML = '';
+  if (perc > 0 || val > 0) {
+    const valorPerc = perc > 0 ? total * (perc / 100) : 0;
+    descontoHTML = `
+      <div style="padding:12px; margin:15px 0; background:#ffe5e5; border-left:4px solid #e53e3e;">
+        <strong style="color:#e53e3e;">🔻 Desconto Aplicado:</strong><br>
+        ${perc > 0 ? `• Percentual: ${perc}% = ${valorPerc.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}<br>` : ''}
+        ${val > 0 ? `• Valor fixo: ${val.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}` : ''}
+      </div>`;
+  }
+
+  // Gerar HTML das parcelas para PDF
+  const valorCartao = final * 1.0524;
+  let parcelasHTML = `
+    <div style="margin:20px 0; padding:15px; background:#f7fafc; border:2px solid #667eea; border-radius:10px;">
+      <h3 style="color:#667eea; text-align:center; margin:0 0 15px 0; font-size:18px;">💳 SIMULAÇÃO DE PARCELAMENTO NO CARTÃO</h3>
+  `;
+
+  for (let parcela = 1; parcela <= 12; parcela++) {
+    const taxaDecimal = taxasParcelas[parcela] / 100;
+    const valorComJuros = valorCartao * (1 + taxaDecimal);
+    const valorParcela = valorComJuros / parcela;
+    const valorTotal = valorParcela * parcela;
+
+    const bgColor = parcela === 1 ? '#d4fc79' : 'white';
+    const borderColor = parcela === 1 ? '#38a169' : '#e2e8f0';
+
+    const textoAcrescimo = parcela === 1 
+      ? '<span style="color:#38a169; font-style:italic;">(Sem acréscimo adicional)</span>' 
+      : `<span style="color:#e53e3e; font-style:italic;">+${taxasParcelas[parcela]}% = ${valorTotal.toLocaleString('pt-BR', {style:'currency', currency:'BRL'})}</span>`;
+
+    parcelasHTML += `
+      <div style="background:${bgColor}; padding:10px; margin:5px 0; border-left:4px solid ${borderColor};">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap;">
+          <span style="font-weight:600; color:#667eea; font-size:16px; min-width:30px;">${parcela}x</span>
+          <span style="font-size:18px; font-weight:700; color:#2d3748; min-width:100px;">${valorParcela.toLocaleString('pt-BR', {style:'currency', currency:'BRL'})}</span>
+          <span style="font-size:14px; flex:1; text-align:right;">${textoAcrescimo}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  parcelasHTML += `</div>`;
+
+  const conteudo = `
+    <div style="font-family:Arial,sans-serif; padding:40px 60px; background:white; color:#333; line-height:1.6; max-width:750px; margin:0 auto;">
+      <div style="text-align:center; margin-bottom:25px; padding-bottom:15px; border-bottom:3px solid #667eea;">
+        <h1 style="color:#667eea; margin:0; font-size:32px;">🎹 LL SAMPLES 🎹</h1>
+        <h2 style="color:#764ba2; margin:10px 0 0 0; font-size:18px;">🌟 ORÇAMENTO ESPECIAL – ${qtdSamples} SAMPLE${qtdSamples>1?"S":""}</h2>
+      </div>
+
+      ${cliente ? `<div style="padding:10px; background:#f7fafc; margin:10px 0;"><strong>👤 Cliente:</strong> ${cliente}</div>` : ''}
+      ${contato ? `<div style="padding:10px; background:#f7fafc; margin:10px 0;"><strong>📲 Contato:</strong> ${contato}</div>` : ''}
+
+      <h3 style="color:#667eea; margin:20px 0 10px 0;">🗒️ SAMPLES SELECIONADOS:</h3>
+      ${samplesHTML}
+
+      ${(perc > 0 || val > 0) ? `<div style="padding:15px; margin:15px 0; background:#f7fafc; border-left:4px solid #667eea; font-size:16px;"><strong>💰 Valor Bruto:</strong> ${total.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div>` : ''}
+      ${descontoHTML}
+
+      <div style="padding:15px; margin:15px 0; background:#667eea; color:white; font-size:16px; border-radius:8px;">
+        <strong>💳 Total Final (Cartão c/ acréscimo 5,24%):</strong><br>
+        <span style="font-size:24px; font-weight:bold;">${(final * 1.0524).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+      </div>
+
+      ${parcelasHTML}
+
+      <div style="padding:15px; margin:15px 0; background:#d4fc79; color:#2d3748; font-size:16px; border-radius:8px;">
+        <strong>💵 Total Final (PIX):</strong><br>
+        <span style="font-size:24px; font-weight:bold;">${final.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+      </div>
+
+      ${msgAdd ? `<div style="padding:15px; background:#f7fafc; border-left:4px solid #667eea; margin-top:15px;"><p style="margin:0; font-style:italic; color:#666;">${msgAdd}</p></div>` : ''}
+
+      <hr style="margin:25px 0; border:none; border-top:2px solid #ddd;">
+      <div style="background:#f7fafc; padding:15px; border-left:4px solid #667eea;">
+        <h4 style="color:#667eea; margin:0 0 10px 0;">📝 Informações Importantes:</h4>
+        <p style="margin:5px 0;">🔗 Os links para download estão disponíveis após a confirmação do pagamento.</p>
+        <p style="margin:15px 0 5px 0;"><strong>⚡ LL SAMPLES ⚡</strong></p>
+        <p style="margin:5px 0;">🎹 Obrigado pela compra! | 👊🏻 Instagram: @llsamples_</p>
+      </div>
+
+      <div style="text-align:center; margin-top:30px; padding-top:15px; border-top:1px solid #ddd; color:#999; font-size:11px;">
+        <p>Orçamento gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}</p>
+      </div>
+    </div>
+  `;
+
+  const elemento = document.createElement('div');
+  elemento.innerHTML = conteudo;
+  elemento.style.width = '100%';
+  elemento.style.backgroundColor = 'white';
+  document.body.appendChild(elemento);
+
+  const opt = {
+    margin: 0,
+    filename: `Orcamento_Parcelas_${Date.now()}.pdf`,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { 
+      scale: 2,
+      useCORS: true,
+      letterRendering: true
+    },
+    jsPDF: { 
+      unit: 'mm', 
+      format: [210, 297 * 3], // Aumenta o tamanho para caber tudo sem quebra
+      orientation: 'portrait',
+      compress: true
+    },
+    pagebreak: { mode: 'avoid-all' }
+  };
+
+  html2pdf().set(opt).from(elemento).save().finally(() => {
+    document.body.removeChild(elemento);
+    alert("✅ PDF com Parcelas gerado!");
+  });
+}
+
+function salvarPDFContinuomobile() {
+  const cliente = document.getElementById("cliente").value.trim();
+  const contato = document.getElementById("contato").value.trim();
+  const perc = parseFloat(document.getElementById("descontoPerc").value) || 0;
+  const val = parseFloat(document.getElementById("descontoVal").value) || 0;
+  const msgAdd = document.getElementById("mensagem").value.trim();
+  const qtdSamples = selectedSamples.size;
+
+  if (qtdSamples === 0) {
+    alert("⚠️ Selecione ao menos um sample!");
+    return;
+  }
+
+  let total = 0;
+  let samplesHTML = '';
+
+  selectedSamples.forEach(i => {
+    const s = samplesData[i];
+    samplesHTML += `
+      <div style="padding:10px; margin:8px 0; background:#f5f5f5; border-left:4px solid #667eea; display:flex; justify-content:space-between;">
+        <strong>• ${s.nome}</strong>
+        <span>R$ ${s.valor.toFixed(2)}</span>
+      </div>`;
+    total += s.valor;
+  });
+
+  const descPerc = total * (perc / 100);
+  const descTotal = descPerc + val;
+  const final = total - descTotal;
+  const valorCartao = final * 1.0524;
+
+  let descontoHTML = '';
+  if (perc > 0 || val > 0) {
+    const valorPerc = perc > 0 ? total * (perc / 100) : 0;
+    descontoHTML = `
+      <div style="padding:12px; margin:15px 0; background:#ffe5e5; border-left:4px solid #e53e3e;">
+        <strong style="color:#e53e3e;">🔻 Desconto Aplicado:</strong><br>
+        ${perc > 0 ? `• Percentual: ${perc}% = ${valorPerc.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}<br>` : ''}
+        ${val > 0 ? `• Valor fixo: ${val.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}` : ''}
+      </div>`;
+  }
+
+  // Gera HTML das parcelas
+  let parcelasHTML = `
+    <div style="margin:20px 0; padding:15px; background:#f7fafc; border:2px solid #667eea; border-radius:10px;">
+      <h3 style="color:#667eea; text-align:center; margin:0 0 15px 0; font-size:18px;">💳 SIMULAÇÃO DE PARCELAMENTO NO CARTÃO</h3>
+  `;
+
+  for (let parcela = 1; parcela <= 12; parcela++) {
+    const taxaDecimal = taxasParcelas[parcela] / 100;
+    const valorComJuros = valorCartao * (1 + taxaDecimal);
+    const valorParcela = valorComJuros / parcela;
+    const valorTotal = valorParcela * parcela;
+
+    const bgColor = parcela === 1 ? '#d4fc79' : 'white';
+    const borderColor = parcela === 1 ? '#38a169' : '#e2e8f0';
+
+    const textoAcrescimo = parcela === 1 
+      ? '<span style="color:#38a169; font-style:italic; font-size:13px;">(Sem acréscimo adicional)</span>' 
+      : `<span style="color:#e53e3e; font-style:italic; font-size:13px;">+${taxasParcelas[parcela]}% = ${valorTotal.toLocaleString('pt-BR', {style:'currency', currency:'BRL'})}</span>`;
+
+    parcelasHTML += `
+      <div style="background:${bgColor}; padding:8px 12px; margin:5px 0; border-left:4px solid ${borderColor}; display:flex; justify-content:space-between; align-items:center; gap:15px;">
+        <span style="font-weight:600; color:#667eea; font-size:15px; min-width:30px;">${parcela}x</span>
+        <span style="font-size:17px; font-weight:700; color:#2d3748; flex:1; text-align:center;">${valorParcela.toLocaleString('pt-BR', {style:'currency', currency:'BRL'})}</span>
+        ${textoAcrescimo}
+      </div>
+    `;
+  }
+  parcelasHTML += `</div>`;
+
+  const conteudo = `
+    <div style="font-family:Arial,sans-serif; padding:40px; background:white; color:#333; line-height:1.6; max-width:700px; margin:0 auto;">
+      <div style="text-align:center; margin-bottom:25px; padding-bottom:15px; border-bottom:3px solid #667eea;">
+        <h1 style="color:#667eea; margin:0; font-size:32px;">🎹 LL SAMPLES 🎹</h1>
+        <h2 style="color:#764ba2; margin:10px 0 0 0; font-size:18px;">🌟 ORÇAMENTO ESPECIAL – ${qtdSamples} SAMPLE${qtdSamples>1?"S":""}</h2>
+      </div>
+
+      ${cliente ? `<div style="padding:10px; background:#f7fafc; margin:10px 0;"><strong>👤 Cliente:</strong> ${cliente}</div>` : ''}
+      ${contato ? `<div style="padding:10px; background:#f7fafc; margin:10px 0;"><strong>📲 Contato:</strong> ${contato}</div>` : ''}
+
+      <h3 style="color:#667eea; margin:20px 0 10px 0;">🗒️ SAMPLES SELECIONADOS:</h3>
+      ${samplesHTML}
+
+      ${(perc > 0 || val > 0) ? `<div style="padding:15px; margin:15px 0; background:#f7fafc; border-left:4px solid #667eea; font-size:16px;"><strong>💰 Valor Bruto:</strong> ${total.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div>` : ''}
+      ${descontoHTML}
+
+      <div style="padding:15px; margin:15px 0; background:#667eea; color:white; font-size:16px;">
+        <strong>💳 Total Final (Cartão c/ acréscimo 5,24%):</strong><br>
+        <span style="font-size:24px; font-weight:bold;">${valorCartao.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+      </div>
+
+      ${parcelasHTML}
+
+      <div style="padding:15px; margin:15px 0; background:#d4fc79; color:#2d3748; font-size:16px;">
+        <strong>💵 Total Final (PIX):</strong><br>
+        <span style="font-size:24px; font-weight:bold;">${final.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+      </div>
+
+      ${msgAdd ? `<div style="padding:15px; margin:15px 0; background:#f7fafc; border-left:4px solid #667eea; font-style:italic;">${msgAdd}</div>` : ''}
+
+      <div style="text-align:center; margin-top:30px; padding-top:15px; border-top:1px solid #ddd; color:#999; font-size:11px;">
+        <p style="margin:5px 0;">⚡ LL SAMPLES ⚡ | 🎹 Obrigado pela compra! | 👊🏻 @llsamples_</p>
+        <p style="margin:5px 0;">Orçamento gerado em ${new Date().toLocaleDateString('pt-BR')} às ${new Date().toLocaleTimeString('pt-BR')}</p>
+      </div>
+    </div>
+  `;
+
+  // Cria elemento temporário
+  const elemento = document.createElement('div');
+  elemento.innerHTML = conteudo;
+  elemento.style.backgroundColor = 'white';
+  elemento.style.margin = '0';
+  elemento.style.padding = '0';
+  document.body.appendChild(elemento);
+
+  const opt = {
+    margin: 0,
+    filename: `Orcamento_Continuo_${Date.now()}.pdf`,
+    image: { type: 'jpeg', quality: 0.98 },
+    html2canvas: { 
+      scale: 2,
+      useCORS: true,
+      letterRendering: true,
+      scrollY: 0,
+      scrollX: 0
+    },
+    jsPDF: { 
+      unit: 'px', 
+      format: [elemento.offsetWidth, elemento.offsetHeight],
+      orientation: 'portrait',
+      compress: true
+    },
+    pagebreak: { mode: 'avoid-all' }
+  };
+
+  html2pdf().set(opt).from(elemento).save().finally(() => {
+    document.body.removeChild(elemento);
+    alert("✅ PDF contínuo com parcelas gerado!");
+  });
+}
 
 
 function gerarMensagem() {
@@ -841,12 +1275,11 @@ https://chat.whatsapp.com/KSSYxQZRanb5OyhRqwgHs6`;
   const descontoHTML = descontoTexto ? `<p class='desconto-texto'>${descontoTexto}</p>` : "";
   const logoHTML = logoSrc ? `<div style="text-align:center; margin-bottom:20px;"><img src="${logoSrc}" alt="Logo" style="height:80px;"></div>` : "";
 
- document.getElementById("previewArea").innerHTML = `
+document.getElementById("previewArea").innerHTML = `
     ${logoHTML}
     <div style="text-align:center;">
       <h2 style="color:#667eea; margin:10px 0; font-size:2em; border:none;">🎹 LL SAMPLES 🎹</h2>
     </div>
-
     <h3 style="text-align:center; margin-top:0; color:#764ba2; font-weight:600;">🌟 ORÇAMENTO ESPECIAL – ${qtdSamples} SAMPLE${qtdSamples>1?"S":""}</h3>
     <hr style="border:2px solid #667eea; margin:20px 0;">
     ${cliente?`<p style="padding:10px; background:#f7fafc; border-radius:8px; margin:10px 0;"><strong>👤 Cliente:</strong> ${cliente}</p>`:""}
@@ -857,11 +1290,20 @@ https://chat.whatsapp.com/KSSYxQZRanb5OyhRqwgHs6`;
     </div>
     ${(perc > 0 || val > 0) ? `<p class="total">💰 Valor Bruto: ${total.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</p>` : ""}
     ${descontoHTML}
-    <p class="valor-final" style="background: #667eea; color:white;">💳 Total Final (Cartão c/ acréscimo): <strong>${(final * 1.06).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</strong></p>
+    <p class="valor-final" style="background: #667eea; color:white;">💳 Total Final (Cartão c/ acréscimo): <strong>${(final * 1.0524).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</strong></p>
+    ${gerarHTMLParcelas(final)}
     <p class="valor-final">💵 Total Final (PIX): <strong>${final.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</strong></p>
     ${msgAdd?`<p style="padding:15px; background:#f7fafc; border-radius:8px; font-style:italic; margin-top:15px;">${msgAdd}</p>`:""}
     <hr style="margin:30px 0; border:1px solid #e2e8f0;">
     <pre id="mensagemPronta" style="background:#f7fafc; padding:20px; border-radius:10px; border-left:4px solid #667eea;">${msg}</pre>`;
+
+  // Reset do estado das parcelas
+  parcelasVisiveis = false;
+  const btnParcelas = document.querySelector('button[onclick="toggleParcelas()"]');
+  if (btnParcelas) {
+    btnParcelas.textContent = '💳 Mostrar Parcelas';
+  }
+
 }
 
 
@@ -1080,9 +1522,10 @@ const linkHTML = incluirLinks ? `<div style="color:#667eea; font-size:16px; marg
       ${(perc > 0 || val > 0) ? `<div style="padding:15px; margin:15px 0; background:#f7fafc; border-left:4px solid #667eea; font-size:16px;"><strong>💰 Valor Bruto:</strong> ${total.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</div>` : ''}
       ${descontoHTML}
       <div style="padding:15px; margin:15px 0; background:#667eea; color:white; font-size:16px;">
-        <strong>💳 Total Final (Cartão c/ acréscimo 6%):</strong><br>
-        <span style="font-size:24px; font-weight:bold;">${(final * 1.06).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
+        <strong>💳 Total Final (Cartão c/ acréscimo 5,24%):</strong><br>
+        <span style="font-size:24px; font-weight:bold;">${(final * 1.0524).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
       </div>
+	     ${gerarHTMLParcelasPDF(final)}
       <div style="padding:15px; margin:15px 0; background:#d4fc79; color:#2d3748; font-size:16px;">
         <strong>💵 Total Final (PIX):</strong><br>
         <span style="font-size:24px; font-weight:bold;">${final.toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}</span>
@@ -1094,6 +1537,40 @@ const linkHTML = incluirLinks ? `<div style="color:#667eea; font-size:16px; marg
     </div>
   `;
 }
+
+function gerarHTMLParcelasPDF(valorFinal) {
+  const valorCartao = valorFinal * 1.0524;
+  let html = `
+    <div style="margin:20px 0; padding:15px; background:#f7fafc; border:2px solid #667eea; border-radius:10px;">
+      <h3 style="color:#667eea; text-align:center; margin:0 0 15px 0; font-size:18px;">💳 SIMULAÇÃO DE PARCELAMENTO NO CARTÃO</h3>
+  `;
+
+  for (let parcela = 1; parcela <= 12; parcela++) {
+    const taxaDecimal = taxasParcelas[parcela] / 100;
+    const valorComJuros = valorCartao * (1 + taxaDecimal);
+    const valorParcela = valorComJuros / parcela;
+    const valorTotal = valorParcela * parcela;
+
+    const bgColor = parcela === 1 ? '#d4fc79' : 'white';
+    const borderColor = parcela === 1 ? '#38a169' : '#e2e8f0';
+
+    const textoAcrescimo = parcela === 1 
+      ? '<span style="color:#38a169; font-style:italic;">(Sem acréscimo adicional)</span>' 
+      : `<span style="color:#e53e3e; font-style:italic;">+${taxasParcelas[parcela]}% = ${valorTotal.toLocaleString('pt-BR', {style:'currency', currency:'BRL'})}</span>`;
+
+    html += `
+      <div style="background:${bgColor}; padding:10px; margin:5px 0; border-left:4px solid ${borderColor}; display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-weight:600; color:#667eea; font-size:16px;">${parcela}x</span>
+        <span style="font-size:18px; font-weight:700; color:#2d3748;">${valorParcela.toLocaleString('pt-BR', {style:'currency', currency:'BRL'})}</span>
+        <span style="font-size:14px;">${textoAcrescimo}</span>
+      </div>
+    `;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
 
 function salvarPDF() {
   const conteudo = gerarConteudoPDF(true, false);
