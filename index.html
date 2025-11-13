@@ -1341,19 +1341,29 @@ function copiarParteCima() {
     alert("⚠️ Gere o orçamento primeiro!");
     return;
   }
+  
   const clone = preview.cloneNode(true);
+  
+  // Remove a mensagem de baixo
   const msgNode = clone.querySelector("#mensagemPronta");
   if (msgNode) msgNode.remove();
-
+  
+  // Remove as parcelas se não estiverem visíveis
+  const parcelasVisiveis = document.querySelector('.parcelas-container.show');
+  if (!parcelasVisiveis) {
+    const parcelasNode = clone.querySelector('.parcelas-container');
+    if (parcelasNode) parcelasNode.remove();
+  }
+  
   let texto = clone.innerText
     .replace(/\r/g, '')           
     .replace(/^\s+/gm, '')        
     .replace(/[ \t]+/g, ' ')      
     .replace(/\n{3,}/g, '\n\n')   
     .trim();
-
+  
   texto = texto.replace(/([^\n])•/g, '$1\n•');
-
+  
   texto = texto
     .replace(/(🎹 LL SAMPLES 🎹)/g, '$1\n')
     .replace(/(🌟 ORÇAMENTO ESPECIAL[^\n]+)/g, '\n$1\n')
@@ -1361,7 +1371,7 @@ function copiarParteCima() {
     .replace(/(💳 Total Final[^\n]+)/g, '\n$1')
     .replace(/(💵 Total Final[^\n]+)/g, '$1')
     .replace(/\n{3,}/g, '\n\n');
-
+  
   const textarea = document.createElement('textarea');
   textarea.value = texto;
   textarea.style.position = 'fixed';
@@ -1370,8 +1380,10 @@ function copiarParteCima() {
   textarea.select();
   document.execCommand('copy');
   document.body.removeChild(textarea);
+  
   alert("✅ Parte de cima copiada!");
 }
+
 
 function copiarParteBaixo() {
   const msgNode = document.getElementById("mensagemPronta");
